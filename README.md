@@ -1,82 +1,78 @@
-# AI Repository Network Analysis
+# Network Analysis of the GitHub AI Open-Source Ecosystem
 
-This repository studies AI GitHub ecosystems (CV + NLP) with repository-level similarity networks, backbone extraction, community detection, and company-level aggregation.
+How is the open-source AI ecosystem structured, and who connects it? This project builds weighted similarity graphs over the most-starred computer vision and NLP repositories on GitHub, extracts their backbone, detects communities, and aggregates the result into a company-level network.
 
-## Project Layout
+Team project for the *Graph Analysis* course (MODAL CSC_43M02_EP) at École Polytechnique, April 2026, by **Raphael des Boscs** and **Xufan Huang**.
 
-- `scripts/`: executable Python pipelines
-- `data/raw/`: raw and cached API data
-- `outputs/graphs/repo/`: repository-level GEXF outputs
-- `outputs/graphs/company/`: company-level GEXF outputs
-- `reports/`: LaTeX report sources
-- `docs/`: project documentation
+📄 **Full report:** [`reports/final_report.pdf`](reports/final_report.pdf)
 
-Detailed file map: `docs/PROJECT_STRUCTURE.md`.
+![Company-level community graph](reports/figures/company_analysis.png)
+*Company-level network (451 companies, 36 communities). Node color = community, node size = activity.*
 
-## Main Pipelines
+## Key findings
 
-1. Build repository graph backbone:
+- **Fork overlap is the most informative signal.** Linking repositories through shared fork owners gives the clearest community structure (modularity 0.40), while README text similarity links almost everything through generic AI vocabulary (modularity 0.15). The final graph mixes both, plus dependency overlap, with weights 0.6 / 0.2 / 0.2.
+- **The ecosystem has four tightly linked cores.** On ~1,000 repositories (967 after deduplication) aggregated to 451 companies, four communities carry about 97% of cross-community weight: research platforms (Ai2, Google Research), industrial CV and infrastructure (Microsoft, NVIDIA), model hubs and NLP (Hugging Face, Tencent) and applied tooling (Explosion, Roboflow). A large computer vision community (CVer, DAIR.AI) stays peripheral.
+- **Large companies act as bridges.** Companies with more than 3 repositories are significantly more central than small ones on all five centrality metrics (one-sided Mann–Whitney U test, Bonferroni-adjusted p < 0.05). The effect is strongest for betweenness centrality (rank-biserial r = 0.44), even after normalizing edge weights by company size.
 
+## Method
+
+1. **Data collection** through the GitHub GraphQL API: top repositories for the `computer-vision` and `nlp` topics, with README text, dependency files and fork owners. Two samples: 100 + 100 repositories (186 unique) for method development, and 500 + 500 (967 unique) for the company-level analysis.
+2. **Repository graph**: edge weight `w = 0.6·fork_jaccard + 0.2·readme_tfidf_cosine + 0.2·dependency_jaccard`.
+3. **Backbone extraction**: weight thresholds, optional top-k sparsification and k-core pruning, with an automatic relaxation step that avoids collapsing the graph.
+4. **Communities and centrality**: weighted Louvain, PageRank, betweenness and eigenvector centrality.
+5. **Signal ablation**: fork-only vs README-only vs mixed graphs, plus threshold sensitivity analysis.
+6. **Company aggregation**: owners mapped to organizations (or the user's profile company), edges summed and normalized by `sqrt(n_a · n_b)`, then Louvain again.
+7. **Hypothesis tests** on centrality (large vs small companies; cross-domain vs single-domain repositories; centrality vs stars).
+
+## Repository structure
+
+| Path | Content |
+|---|---|
+| `scripts/` | Python pipelines and analysis scripts (detailed in [`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md)) |
+| `data/raw/` | Cached GitHub API data, owner-to-company cache, Wikidata AI concept list |
+| `outputs/graphs/` | Graphs in GEXF format (open with [Gephi](https://gephi.org/)): repository, company and signal-comparison graphs |
+| `outputs/tables/` | Company nodes, communities and owner-to-company mapping (CSV) |
+| `reports/` | Report (LaTeX source and PDF) and figures |
+
+## Reproducing the results
+
+```bash
+pip install -r requirements.txt
+export GITHUB_TOKEN=...   # only needed to re-fetch data; cached data is in data/raw/
+```
+
+All commands run from the repository root.
+
+**Repository graph (500 + 500 sample)**
 ```bash
 python scripts/build_repository_backbone.py \
   --raw-output data/raw/repo_raw_data_fork.json \
-  --gexf-output outputs/graphs/repo/repository_backbone_fork.gexf
+  --gexf-output outputs/graphs/repo/repository_backbone_fork.gexf \
+  --per-domain-limit 500 \
+  --weight-fork 0.6 --weight-readme 0.2 --weight-dep 0.2
 ```
 
-2. Prepare clearer Gephi views (backbone + metagraph):
-
-```bash
-python scripts/prepare_visual_backbone.py \
-  --input-gexf outputs/graphs/repo/repository_backbone_fork.gexf \
-  --output-prefix outputs/graphs/repo/repo_viz \
-  --community-attr Community \
-  --edge-quantile 0.35 --top-k 8 --k-core 2 \
-  --cross-quantile 0.7 --cross-top-k 2 \
-  --meta-quantile 0.5 --meta-top-k 3
-```
-
-3. Seed community coordinates for Gephi:
-
-```bash
-python scripts/seed_community_layout.py \
-  --input-gexf outputs/graphs/repo/repo_viz_clustered_view.gexf \
-  --output-gexf outputs/graphs/repo/repo_viz_clustered_seeded.gexf \
-  --community-attr Community \
-  --community-gap 7000 --local-scale 900
-```
-
-4. Aggregate to company network:
-
+**Company network**
 ```bash
 python scripts/analyze_company_communities.py \
   --repo-raw data/raw/repo_raw_data_fork.json \
   --repo-graph outputs/graphs/repo/repository_backbone_fork.gexf \
   --company-graph outputs/graphs/company/company_network.gexf \
+  --fetch-owner-company \
   --drop-owners-without-company
 ```
 
-5. (Recommended) Save outputs in a dataset-specific folder:
-
+**Single-signal ablation (100 + 100 sample)**
 ```bash
-python scripts/analyze_company_communities.py \
-  --repo-raw data/raw/repo_raw_data_fork.json \
-  --repo-graph outputs/graphs/repo/repository_backbone_fork.gexf \
-  --fetch-owner-company \
-  --drop-owners-without-company \
-  --dataset-tag top100_cv_nlp
+python scripts/build_repository_backbone.py --reuse-raw \
+  --raw-output data/raw/repo_raw_data_fork_top100.json \
+  --gexf-output outputs/graphs/repo_signal_compare/repository_fork_only.gexf \
+  --signal-mode fork --pre-min-weight 0.0125 --min-weight 0.0125 \
+  --top-k 0 --k-core 0 --no-auto-relax
 ```
+Use `--signal-mode readme` or `--signal-mode mixed` for the other two variants. The report's *Reproducibility* section lists every command, including the Gephi visualization steps.
 
-This writes files under:
-- `outputs/datasets/top100_cv_nlp/graphs/company/company_network.gexf`
-- `outputs/datasets/top100_cv_nlp/tables/company_nodes.csv`
-- `outputs/datasets/top100_cv_nlp/tables/company_communities.csv`
-- `outputs/datasets/top100_cv_nlp/tables/owner_company_map.csv`
-- `outputs/datasets/top100_cv_nlp/cache/owner_company_cache.json`
+## Limitations
 
-## Current Key Outputs
-
-- Repository graph: `outputs/graphs/repo/repository_backbone_fork.gexf`
-- Repo clustered view: `outputs/graphs/repo/repo_viz_clustered_seeded.gexf`
-- Company graph: `outputs/graphs/company/company_network.gexf`
-- Company metagraph: `outputs/graphs/company/company_viz_community_metagraph.gexf`
-- Owner-company mapping: `outputs/tables/owner_company_map.csv` (or dataset-specific path)
+Top-star sampling over-represents popular repositories; company identities rely on user-provided profile fields; communities depend on backbone parameters; and the analysis is a single snapshot in time.

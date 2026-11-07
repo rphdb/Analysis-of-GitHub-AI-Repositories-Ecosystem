@@ -1,32 +1,40 @@
 # Project Structure
 
-## Root
-
-- `README.md`: quick start and pipeline entry points
-- `scripts/`: Python analysis pipelines
-- `data/`: raw data and API caches
-- `outputs/`: generated graph artifacts
-- `reports/`: report source files
-- `docs/`: documentation
+All scripts are meant to be run from the repository root.
 
 ## scripts/
 
-- `build_repository_backbone.py`: GitHub GraphQL retrieval + repository graph + backbone + centrality
-- `prepare_visual_backbone.py`: visualization-oriented sparsification and metagraph export
-- `seed_community_layout.py`: injects seeded coordinates for community-separated Gephi layouts
-- `analyze_company_communities.py`: company-level aggregation and community analysis
+### Main pipeline
+- `build_repository_backbone.py`: GitHub GraphQL retrieval, mixed-weight repository graph (fork, README, dependency signals), backbone extraction, Louvain communities and centrality. Supports single-signal modes (`--signal-mode fork|readme|mixed`).
+- `analyze_company_communities.py`: aggregates the repository graph into a company-level network and detects company communities.
+- `prepare_visual_backbone.py`: visualization-oriented sparsification and community metagraph export for Gephi.
+- `seed_community_layout.py`: injects community-separated coordinates into a GEXF graph for Gephi layouts.
 
-## data/
+### Single-signal graph builders (method development, 100 + 100 sample)
+- `build_repository_backbone_forking.py`: graph from fork-owner Jaccard similarity.
+- `build_repository_backbone_readme.py`: graph from README TF-IDF cosine similarity.
+- `build_repository_backbone_readme_beta.py`: README graph restricted to AI vocabulary (uses the Wikidata concept list).
+- `build_repository_backbone_hybrid.py`: combination of the fork and README signals.
 
-- `raw/`: normalized raw API payloads and owner/company cache
+### Analysis
+- `threshold_analysis.py`: influence of the similarity threshold on graph size and edge-weight distribution.
+- `basic_graph_analysis.py`: basic graph metrics and centrality distributions.
+- `assign_labels.py`: assigns AI-topic labels to repositories and computes the empirical purity of Louvain communities.
+- `dictionnary_testor.py`: builds the AI concept dictionary from Wikidata (SPARQL) and a curated glossary.
+- `hypothesis_tester.py`: statistical tests on centrality (cross-domain vs single-domain repositories, centrality vs stars).
+
+## data/raw/
+- `repo_raw_data_fork_top100.json`: GitHub data, 100 + 100 sample.
+- `repo_raw_data_fork.json`: GitHub data, 500 + 500 sample.
+- `owner_company_cache.json`: cached owner-to-company lookups.
+- `wikidata_ai_concepts.json`: AI concepts retrieved from Wikidata by `dictionnary_testor.py`.
 
 ## outputs/
-
-- `graphs/repo/`: repository network and visualization variants (`repo_viz_*`)
-- `graphs/company/`: company network and visualization variants (`company_viz_*`)
-- `tables/`: tabular outputs, including `owner_company_map.csv`
-- `datasets/<tag>/...`: optional dataset-scoped outputs generated with `--dataset-tag`
+- `graphs/repo/`: repository networks and visualization variants.
+- `graphs/company/`: company networks and visualization variants.
+- `graphs/repo_signal_compare/`: fork-only, README-only and mixed-weight graphs used in the signal ablation.
+- `tables/`: company nodes, company communities and owner-to-company mapping (CSV).
 
 ## reports/
-
-- `final_report.tex`: current report draft source
+- `final_report.tex` / `final_report.pdf`: final report.
+- `figures/`: figures used in the report and README.

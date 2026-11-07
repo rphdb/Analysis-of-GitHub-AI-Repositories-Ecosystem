@@ -1,0 +1,11 @@
+requests
+networkx
+python-louvain
+pandas
+numpy
+scipy
+scikit-learn
+matplotlib
+tqdm
+markdown
+beautifulsoup4
